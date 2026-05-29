@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write # 必须开启写入权限
 
 jobs:
   sync_latest_from_upstream:
@@ -15,17 +15,28 @@ jobs:
       - name: Checkout target repo
         uses: actions/checkout@v4
       
-      - name: Sync upstream changes
+      - name: Sync with Auto-Detected Upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # 添加上游仓库并获取数据
-          git remote add upstream https://github.com/cmliu/edgetunnel.git
+          # 【自动探测】查询父仓库的 URL
+          # repos/${{ github.repository }} 是获取当前仓库的信息
+          # --jq '.parent.html_url' 是直接提取 JSON 中的父仓库地址
+          UPSTREAM_URL=$(gh api repos/${{ github.repository }} --jq '.parent.html_url')
+          
+          if [ -z "$UPSTREAM_URL" ]; then
+            echo "::error::没有探测到父仓库，请检查该仓库是否是通过 Fork 创建的。"
+            exit 1
+          fi
+          
+          echo "探测到的上游仓库地址: $UPSTREAM_URL"
+          
+          git remote add upstream $UPSTREAM_URL
           git fetch upstream
           
-          # 将上游 main 分支合并到你的 main 分支
+          # 自动合并，如果遇到冲突会停止并报错，你需要手动处理
           git merge upstream/main --no-edit
-          
-          # 推送到你的仓库
           git push origin main
